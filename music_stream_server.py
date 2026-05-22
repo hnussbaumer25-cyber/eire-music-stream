@@ -16,24 +16,16 @@ app = Flask(__name__)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MUSIC_DIR = APP_DIR  # Music files in root
 
-# Global variable to store current random track
-current_random_track = None
-
 def get_random_music_file():
     """Get a random MP3 file from the music directory"""
-    global current_random_track
-    
     # Find all MP3 files in the root directory
     mp3_files = glob.glob(os.path.join(MUSIC_DIR, '*.mp3'))
     
     if not mp3_files:
         return None
     
-    # Pick a random file if we don't have one, or return the current one
-    if current_random_track is None or not os.path.exists(current_random_track):
-        current_random_track = random.choice(mp3_files)
-    
-    return current_random_track
+    # Pick a random file each time this is called
+    return random.choice(mp3_files)
 
 def get_track_name_from_path(file_path):
     """Extract a clean track name from file path"""
@@ -340,9 +332,7 @@ def stream():
 
 @app.route('/next')
 def next_track():
-    """Switch to next random track"""
-    global current_random_track
-    current_random_track = None  # Reset to pick a new random track
+    """Get info about next random track"""
     track_file = get_random_music_file()
     
     if track_file:
