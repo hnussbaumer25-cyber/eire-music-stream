@@ -11,21 +11,14 @@ import threading
 import time
 from pathlib import Path
 
-# Try to import pygame for audio
-try:
-    import pygame
-    from pygame import mixer
-    AUDIO_AVAILABLE = True
-except ImportError:
-    AUDIO_AVAILABLE = False
-
 app = Flask(__name__)
 
 # Configuration
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(APP_DIR, 'data')
-MUSIC_DIR = os.path.join(APP_DIR, 'music')
-DATABASE_PATH = os.path.join(DATA_DIR, 'irelands_own.db')
+# Look for files in root directory (where they are on GitHub)
+DATA_DIR = APP_DIR  # Database in root
+MUSIC_DIR = APP_DIR  # Music files in root
+DATABASE_PATH = os.path.join(APP_DIR, 'irelands_own.db')
 
 # Global music state
 current_music = {
