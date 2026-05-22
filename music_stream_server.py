@@ -6,19 +6,44 @@ Deploy this to a cloud service (Render, Railway, PythonAnywhere, etc.)
 
 from flask import Flask, Response, render_template_string, jsonify
 import os
-import sqlite3
-import threading
-import time
+import random
+import glob
 from pathlib import Path
 
 app = Flask(__name__)
 
 # Configuration
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-# Look for files in root directory (where they are on GitHub)
-DATA_DIR = APP_DIR  # Database in root
 MUSIC_DIR = APP_DIR  # Music files in root
-DATABASE_PATH = os.path.join(APP_DIR, 'irelands_own.db')
+
+# Global variable to store current random track
+current_random_track = None
+
+def get_random_music_file():
+    """Get a random MP3 file from the music directory"""
+    global current_random_track
+    
+    # Find all MP3 files in the root directory
+    mp3_files = glob.glob(os.path.join(MUSIC_DIR, '*.mp3'))
+    
+    if not mp3_files:
+        return None
+    
+    # Pick a random file if we don't have one, or return the current one
+    if current_random_track is None or not os.path.exists(current_random_track):
+        current_random_track = random.choice(mp3_files)
+    
+    return current_random_track
+
+def get_track_name_from_path(file_path):
+    """Extract a clean track name from file path"""
+    if not file_path:
+        return "No track available"
+    
+    # Get filename without extension and replace underscores with spaces
+    filename = os.path.basename(file_path)
+    name = os.path.splitext(filename)[0]
+    return name.replace('_', ' ')
 
 # Global music state
 current_music = {
@@ -246,38 +271,6 @@ PLAYER_HTML = """
 """
 
 
-def get_music_settings():
-    """Get music settings from database"""
-    try:
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        settings = {}
-        cursor.execute("SELECT key, value FROM site_settings WHERE key LIKE 'music_%'")
-        rows = cursor.fetchall()
-        
-        for row in rows:
-            settings[row['key']] = row['value']
-        
-        conn.close()
-        
-        return {
-            'enabled': settings.get('music_enabled', 'false') == 'true',
-            'track_name': settings.get('music_track_name', 'No track selected'),
-            'track_url': settings.get('music_track_url', ''),
-            'volume': int(settings.get('music_volume', '50')),
-        }
-    except Exception as e:
-        print(f"Database error: {e}")
-        return {
-            'enabled': False,
-            'track_name': 'No track',
-            'track_url': '',
-            'volume': 50
-        }
-
-
 def stream_audio_file(file_path):
     """Stream audio file in chunks"""
     try:
@@ -300,25 +293,34 @@ def index():
 @app.route('/api/music-info')
 def music_info():
     """Get current music information"""
-    settings = get_music_settings()
-    return jsonify(settings)
+    track_file = get_random_music_file()
+    
+    if track_file:
+        return jsonify({
+            'enabled': True,
+            'track_name': get_track_name_from_path(track_file),
+            'track_url': os.path.basename(track_file),
+            'volume': 85
+        })
+    else:
+        return jsonify({
+            'enabled': False,
+            'track_name': 'No music files available',
+            'track_url': '',
+            'volume': 50
+        })
 
 
 @app.route('/stream')
 def stream():
-    """Stream the current music file"""
-    settings = get_music_settings()
+    """Stream a random music file"""
+    track_file = get_random_music_file()
     
-    if not settings['enabled'] or not settings['track_url']:
+    if not track_file or not os.path.exists(track_file):
         return "No music available", 404
     
-    track_path = settings['track_url']
-    
-    if not os.path.exists(track_path):
-        return "Music file not found", 404
-    
     # Determine MIME type
-    ext = os.path.splitext(track_path)[1].lower()
+    ext = os.path.splitext(track_file)[1].lower()
     mime_types = {
         '.mp3': 'audio/mpeg',
         '.wav': 'audio/wav',
@@ -327,13 +329,32 @@ def stream():
     mime_type = mime_types.get(ext, 'audio/mpeg')
     
     return Response(
-        stream_audio_file(track_path),
+        stream_audio_file(track_file),
         mimetype=mime_type,
         headers={
             'Cache-Control': 'no-cache',
-            'Content-Disposition': f'inline; filename="{os.path.basename(track_path)}"'
+            'Content-Disposition': f'inline; filename="{os.path.basename(track_file)}"'
         }
     )
+
+
+@app.route('/next')
+def next_track():
+    """Switch to next random track"""
+    global current_random_track
+    current_random_track = None  # Reset to pick a new random track
+    track_file = get_random_music_file()
+    
+    if track_file:
+        return jsonify({
+            'success': True,
+            'track_name': get_track_name_from_path(track_file)
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'No music files available'
+        })
 
 
 if __name__ == '__main__':
@@ -341,16 +362,24 @@ if __name__ == '__main__':
     print("ÉIRE REMEMBERED - CLOUD MUSIC STREAMING SERVER")
     print("=" * 80)
     print(f"Music Directory: {MUSIC_DIR}")
-    print(f"Database: {DATABASE_PATH}")
+    print()
+    
+    # List available MP3 files
+    mp3_files = glob.glob(os.path.join(MUSIC_DIR, '*.mp3'))
+    if mp3_files:
+        print(f"📀 Found {len(mp3_files)} music files:")
+        for mp3 in mp3_files:
+            print(f"   - {os.path.basename(mp3)}")
+    else:
+        print("⚠️  No MP3 files found!")
+    
+    print()
+    print("=" * 80)
+    print("🎵 Random song will play each time")
+    print("🌐 Users can access at: http://localhost:5001")
     print("=" * 80)
     print()
-    print("Server starting...")
-    print("Users can access the music player at: http://localhost:5001")
-    print()
-    print("To deploy to cloud:")
-    print("  - Render.com (free tier)")
-    print("  - Railway.app (free tier)")
-    print("  - PythonAnywhere.com (free tier)")
+    print("Deploying to: Render.com (free tier)")
     print()
     print("=" * 80)
     
